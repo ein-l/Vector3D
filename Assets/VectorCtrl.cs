@@ -5,6 +5,11 @@ using System;
 
 public class VectorCtrl : MonoBehaviour {
 	public LineRenderer line = null;
+	public bool isDebug = true;
+	public bool isFill = true;
+	public bool hasTerminate = true;
+
+	private GameObject meshObject = null;
 
 	// Use this for initialization
 	void Start () {
@@ -31,14 +36,26 @@ public class VectorCtrl : MonoBehaviour {
 
 	void UpdateLine(){
 		List<Vector3> pList = new List<Vector3>();
+		List<Vector3> plList = new List<Vector3>();
 		
 		Vector3 before = new Vector3(0,0,0);
 		Vector3 bPow = new Vector3(0,0,0);
+		bool terminate = false;
+		bool endOfLoop = false;
 		for( int i=0; i<this.transform.childCount; ++i ) {
 			Transform tf = this.transform.GetChild(i);
+			if( tf.name.IndexOf("Mesh") != -1 ) {
+				if( !hasTerminate && i == this.transform.childCount-1 ) {
+					i = -1;
+					endOfLoop = true;
+				}
+				continue;
+			}
+
 			MeshRenderer renderer = tf.gameObject.GetComponent<MeshRenderer>();
 			if( renderer ) {
-				renderer.enabled = false;
+				if( !isDebug ) renderer.enabled = false;
+				else renderer.enabled = true;
 			}
 			
 			Vector3 cur = tf.position;
@@ -47,35 +64,70 @@ public class VectorCtrl : MonoBehaviour {
 				Transform normal = tf.transform.GetChild(0);
 				MeshRenderer renderer2 = normal.gameObject.GetComponent<MeshRenderer>();
 				if( renderer2 ) {
-					renderer2.enabled = false;
+					if( !isDebug ) renderer2.enabled = false;
+					else renderer2.enabled = true;
 				}
 				cPow = normal.position - cur;
 				//cPow.Normalize();
 			}
 			
 			//大きさ1で分割する
-			if( i > 0 ) {
+			if( i > 0 || endOfLoop ) {
 				float size = (cur - before).sqrMagnitude;
 				if( size > 5.0 ) {
 					int s = (int)Mathf.Ceil(size / 5);
 					for( int k=0; k<s; ++k){
-						pList.Add ( Calc ( ((float)k / (float)(s-1)), before, cur, bPow, cPow ) );
+						Vector3 vec = Calc ( ((float)k / (float)(s-1)), before, cur, bPow, cPow );
+						if( !terminate ) {
+							plList.Add ( vec );
+						}
+						pList.Add (vec);
 					}
 				}else{
-					//いまのところまで
-					pList.Add ( Calc ( 1.0f, before, cur, bPow, cPow ) );
+					Vector3 vec = Calc ( 1.0f, before, cur, bPow, cPow );
+					if( !terminate ) {
+						plList.Add ( vec );
+					}
+					pList.Add (vec);
 				}
 			}else{
+				if( !terminate ) {
+					plList.Add ( tf.position );
+				}
 				pList.Add ( tf.position );
 			}
 			
 			before = cur;
 			bPow = cPow;
+			
+			//terminater?
+			// NOTE: terminater以降のラインは描画されない。パスとじ用
+			if( tf.name == "Terminater" ) {
+				terminate = true;
+			}
+			if( endOfLoop ) {
+				break;
+			}
+			if( !hasTerminate && i == this.transform.childCount-1 ) {
+				i = -1;
+				endOfLoop = true;
+			}
 		}
 		
-		line.SetVertexCount(pList.Count);
-		for( int i=0; i<pList.Count; ++i ) {
-			line.SetPosition( i, pList[i] );
+		line.SetVertexCount(plList.Count);
+		for( int i=0; i<plList.Count; ++i ) {
+			line.SetPosition( i, plList[i] );
+		}
+
+		//fillフラグがたっていたら、メッシュを作る
+		if( isFill ) {
+			if( meshObject == null ) {
+				meshObject = (GameObject)GameObject.Instantiate(Resources.Load<GameObject>("Prefabs/Mesh"), this.transform.position, this.transform.rotation);
+				meshObject.transform.parent = this.transform;
+			}
+
+			MeshCreate script = meshObject.GetComponent<MeshCreate>();
+			script.Create( pList );
 		}
 	}
 
